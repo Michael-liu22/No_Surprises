@@ -1,0 +1,347 @@
+```{r}
+
+###load packages and data 
+
+library(ipumsr)
+library(survey)
+library(srvyr)
+library(dplyr)
+library(ggplot2)
+
+ddi <- read_ipums_ddi("cps_00012.xml")
+data <- read_ipums_micro(ddi)
+
+```
+
+```{r}
+
+###sample preparation
+
+#select states (including intervention & control)
+data <- subset(data, data$STATEFIP == 11 | data$STATEFIP == 2 | data$STATEFIP == 15 | data$STATEFIP == 45 | data$STATEFIP == 21 | data$STATEFIP == 47 | data$STATEFIP == 1 | data$STATEFIP == 22 | data$STATEFIP == 5 | data$STATEFIP == 40 | data$STATEFIP == 20 | data$STATEFIP == 55 | data$STATEFIP == 46 | data$STATEFIP == 38 | data$STATEFIP == 30 | data$STATEFIP == 56 | data$STATEFIP == 16 | data$STATEFIP == 49 | data$STATEFIP == 6 | data$STATEFIP == 9 | data$STATEFIP == 12 | data$STATEFIP == 17 | data$STATEFIP == 24 | data$STATEFIP == 36)
+
+#create indicator variable for intervention 
+data$policy_change_state <- NA
+
+#designate intervention states 
+data$policy_change_state[data$STATEFIP == 11 | data$STATEFIP == 2 | data$STATEFIP == 15 | data$STATEFIP == 45 | data$STATEFIP == 21 | data$STATEFIP == 47 | data$STATEFIP == 1 | data$STATEFIP == 22 | data$STATEFIP == 5 | data$STATEFIP == 40 | data$STATEFIP == 20 | data$STATEFIP == 55 | data$STATEFIP == 46 | data$STATEFIP == 38 | data$STATEFIP == 30 | data$STATEFIP == 56 | data$STATEFIP == 16 | data$STATEFIP == 49] <- TRUE
+
+#designate control states
+data$policy_change_state[data$STATEFIP == 6 | data$STATEFIP == 9 | data$STATEFIP == 12 | data$STATEFIP == 17 | data$STATEFIP == 24 | data$STATEFIP == 36] <- FALSE
+
+#subset to study period: ASEC 2019-2024
+data <- subset(data, data$YEAR >= 2019)
+
+#exclude 2022 data 
+data <- subset(data, data$YEAR != 2022)
+
+#subset to participants with direct-purchase insurance 
+data <- subset(data, data$DPCOVLY == 2)
+
+#subset to aduts 19-64
+data <- subset(data, data$AGE >= 19 & data$AGE <= 64)
+
+#exclude participants with public insurance and employer-sponsored insurance 
+data <- subset(data, data$HIMCAIDLY != 2)
+data <- subset(data, data$HIMCARELY != 2)
+data <- subset(data, data$HICHAMP != 2)
+data <- subset(data, data$GRPCOVLY != 2)
+
+```
+
+```{r}
+
+####generate outcomes
+
+#remove premium spending from healthcare spending 
+data$MOOP <- (data$MOOP - data$HIPVAL)
+
+#generate high burden medical spending
+data$total_spending <- (data$MOOP + data$HIPVAL)
+data$high_medical_spending <- NA
+data$high_medical_spending <- (data$total_spending)/(data$FTOTVAL) > 0.1
+data$high_medical_spending[data$total_spending == 0] <- FALSE
+data$high_medical_spending[data$FTOTVAL <= 0] <- NA 
+
+table(data$high_medical_spending)
+```
+
+```{r}
+
+#inflation-adjust spending outcomes
+data <- data %>%
+  mutate(MOOP = case_when(
+    YEAR == 2019 ~ data$MOOP*(304.7/251.1),
+    YEAR == 2020 ~ data$MOOP*(304.7/255.7),
+    YEAR == 2021 ~ data$MOOP*(304.7/258.8),
+    YEAR == 2022 ~ data$MOOP*(304.7/271),
+    YEAR == 2023 ~ data$MOOP*(304.7/292.7),
+    YEAR == 2024 ~ data$MOOP 
+  ))
+
+data <- data %>%
+  mutate(HIPVAL = case_when(
+    YEAR == 2019 ~ data$HIPVAL*(304.7/251.1),
+    YEAR == 2020 ~ data$HIPVAL*(304.7/255.7),
+    YEAR == 2021 ~ data$HIPVAL*(304.7/258.8),
+    YEAR == 2022 ~ data$HIPVAL*(304.7/271),
+    YEAR == 2023 ~ data$HIPVAL*(304.7/292.7),
+    YEAR == 2024 ~ data$HIPVAL 
+  ))
+
+```
+
+```{r}
+
+final_dataset <- data
+
+#fix year variable (given 1-year lookback period)
+final_dataset$YEAR <- as.numeric(final_dataset$YEAR)
+final_dataset$YEAR <- (final_dataset$YEAR - 1)
+
+```
+
+```{r}
+
+#survey set
+svy <- as_survey_rep(final_dataset, weight = ASECWT, repweights = matches("REPWTP[0-9]+"))
+
+###generate plots
+
+#OOP Spending
+
+agg_data <- svyby(~MOOP, by = ~YEAR + policy_change_state, 
+                 design = svy, 
+                 FUN = svymean)
+
+ggplot(agg_data, aes(x = YEAR, y = MOOP, color = policy_change_state, group = policy_change_state)) +
+  geom_line()  +
+  labs(title = " ",
+       x = "Survey Year",
+       y = "Out-of-Pocket Spending, $") +
+  geom_errorbar(aes(ymin = MOOP - 1.96 * se, ymax = MOOP + 1.96 * se), width = 0.05)  +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
+        legend.position = "bottom") +
+  guides(color = guide_legend(title = NULL)) +
+  scale_color_manual(values = c("#374e55", "#df8f44"),
+                     labels = c("Control States", "Intervention States")) + scale_y_continuous(limits = c(0, 5000)) + geom_vline(xintercept = 2021, linetype = "dashed", color = "black") + 
+  scale_x_continuous(breaks = seq(min(agg_data$YEAR), max(agg_data$YEAR), by = 1),
+    labels = c("2019", "2020", "2021", "2022", "2023", "2024"))
+
+#premium spending
+
+agg_data_2 <- svyby(~HIPVAL, by = ~YEAR + policy_change_state, 
+                 design = svy, 
+                 FUN = svymean)
+
+ggplot(agg_data_2, aes(x = YEAR, y = HIPVAL, color = policy_change_state, group = policy_change_state)) +
+  geom_line()  +
+  labs(title = " ",
+       x = "Survey Year",
+       y = "Premium Spending, $")  +
+  geom_errorbar(aes(ymin = HIPVAL - 1.96 * se, ymax = HIPVAL + 1.96 * se), width = 0.05) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
+        legend.position = "bottom")  +
+  guides(color = guide_legend(title = NULL)) + scale_y_continuous(limits = c(0, 8000)) + scale_color_manual(values = c("#374e55", "#df8f44"),
+                     labels = c("Control States", "Intervention States"))  + geom_vline(xintercept = 2021, linetype = "dashed", color = "black")  + 
+  scale_x_continuous(breaks = seq(min(agg_data$YEAR), max(agg_data$YEAR), by = 1),
+    labels = c("2019", "2020", "2021", "2022", "2023", "2024"))
+
+#high-burden medical spending
+
+agg_data_3 <- svyby(~high_medical_spending, by = ~YEAR + policy_change_state, 
+                 design = svy, 
+                 FUN = svymean, 
+                 na.rm = TRUE)
+
+ggplot(agg_data_3, aes(x = YEAR, y = high_medical_spendingTRUE*100, color = policy_change_state, group = policy_change_state)) +
+  geom_line()  +
+  labs(title = " ",
+       x = "Survey Year",
+       y = "High Burden Medical Spending (%)") +
+  geom_errorbar(aes(ymin = high_medical_spendingTRUE*100 - 1.96 * se2*100, ymax = high_medical_spendingTRUE*100 + 1.96 * se2*100), width = 0.05) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
+        legend.position = "bottom")  +
+  guides(color = guide_legend(title = NULL)) + scale_y_continuous(limits = c(0, 50)) + scale_color_manual(values = c("#374e55", "#df8f44"),
+                     labels = c("Control States", "Intervention States"))  + geom_vline(xintercept = 2021, linetype = "dashed", color = "black")  + 
+  scale_x_continuous(breaks = seq(min(agg_data$YEAR), max(agg_data$YEAR), by = 1),
+    labels = c("2019", "2020", "2021", "2022", "2023", "2024"))
+
+```
+
+```{r}
+
+#graph parallel trends graphs 
+
+parallel_trends <- subset(final_dataset, final_dataset$YEAR <= 2021)
+
+svy_parallel <- as_survey_rep(parallel_trends, weight = ASECWT, repweights = matches("REPWTP[0-9]+"))
+
+agg_data <- svyby(~MOOP, by = ~YEAR + policy_change_state, 
+                 design = svy_parallel, 
+                 FUN = svymean, 
+                 na.rm = TRUE)
+
+ggplot(agg_data, aes(x = YEAR, y = MOOP, color = policy_change_state, group = policy_change_state)) +
+  geom_line()  +
+  labs(title = " ",
+       x = "Survey Year",
+       y = "Out-of-Pocket Spending, $") +
+  theme_minimal() +
+  geom_errorbar(aes(ymin = MOOP - 1.96 * se, ymax = MOOP + 1.96 * se), width = 0.05) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
+        legend.position = "bottom") +
+  guides(color = guide_legend(title = NULL)) +
+  scale_color_manual(values = c("#374e55", "#df8f44"),
+                     labels = c("Control States", "Intervention States")) + scale_y_continuous(limits = c(0, 6000))  + 
+  scale_x_continuous(breaks = seq(min(agg_data$YEAR), max(agg_data$YEAR), by = 1),
+    labels = c("2019", "2020", "2021"))
+
+agg_data_2 <- svyby(~HIPVAL, by = ~YEAR + policy_change_state, 
+                 design = svy_parallel, 
+                 FUN = svymean, 
+                 na.rm = TRUE)
+
+ggplot(agg_data_2, aes(x = YEAR, y = HIPVAL, color = policy_change_state, group = policy_change_state)) +
+  geom_line()  +
+  labs(title = " ",
+       x = "Survey Year",
+       y = "Premium Spending, $")  +
+  theme_minimal() +
+  geom_errorbar(aes(ymin = HIPVAL - 1.96 * se, ymax = HIPVAL + 1.96 * se), width = 0.05) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
+        legend.position = "bottom")  +
+  guides(color = guide_legend(title = NULL)) + scale_y_continuous(limits = c(0, 8000)) + scale_color_manual(values = c("#374e55", "#df8f44"),
+                     labels = c("Control States", "Intervention States"))  + 
+  scale_x_continuous(breaks = seq(min(agg_data$YEAR), max(agg_data$YEAR), by = 1),
+    labels = c("2019", "2020", "2021"))
+
+agg_data_4 <- svyby(~high_medical_spending, by = ~YEAR + policy_change_state, 
+                 design = svy_parallel, 
+                 FUN = svymean, 
+                 na.rm = TRUE)
+
+ggplot(agg_data_4, aes(x = YEAR, y = high_medical_spendingTRUE*100, color = policy_change_state, group = policy_change_state)) +
+  geom_line()  +
+  labs(title = " ",
+       x = "Survey Year",
+       y = "High Burden Medical Spending, %") +
+  theme_minimal() +
+  geom_errorbar(aes(ymin = high_medical_spendingTRUE*100 - 1.96 * se2*100, ymax = high_medical_spendingTRUE*100 + 1.96 * se2*100), width = 0.05) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
+        legend.position = "bottom")  +
+  guides(color = guide_legend(title = NULL)) + scale_y_continuous(limits = c(0, 50)) + scale_color_manual(values = c("#374e55", "#df8f44"),
+                     labels = c("Control States", "Intervention States"))   + 
+  scale_x_continuous(breaks = seq(min(agg_data$YEAR), max(agg_data$YEAR), by = 1),
+    labels = c("2019", "2020", "2021"))
+
+```
+
+```{r}
+
+###generate Figure 1 (map of surprise billing protections prior to the NSA)
+
+library(usmap)
+library(ggplot2)
+
+my_data <- data.frame(
+  state = c("CA", "CT", "FL", "IL", "MD", "NY", "CO", "DE", "IN", "IA", "MA", "MS", "NH", "NJ", "NM", "NC", "PA", "RI", "TX", "VT", "WV", "AK", "HI", "SC", "KY", "TN", "AL", "LA", "AR", "OK", "KS", "WI", "SD", "ND", "MT", "WY", "ID", "UT", "DC"), values = as.factor(c(0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2))
+)
+
+colors <- c("#374e55", "#df8f44", "#B24745FF")
+
+plot_usmap(regions = "states", data = my_data, values = "values", color = "black") + 
+  scale_fill_manual(values = colors, na.value = "white", na.translate = F, labels = c("Comprehensive Protections", "Some Protections", "No Protections")) + labs(fill = " ") +
+  theme(legend.position = "bottom")
+
+```
+
+```{r}
+
+#plot outcome distribution
+
+#remove top 2.5th percentile 
+
+library(ggplot2)
+
+moop_threshold <- quantile(final_dataset$MOOP, 0.975, na.rm = TRUE)
+filtered_moop <- final_dataset[final_dataset$MOOP <= moop_threshold, ]
+
+ggplot(filtered_moop, aes(x = MOOP)) +
+  geom_histogram(aes(y = after_stat(count / sum(count))), bins = 50, fill = "#374e55", color = "white") +
+  scale_y_continuous(labels = scales::percent) +
+  labs(x = "Out-of-Pocket Spending, $", y = "Percent", title = " ") +
+  theme_minimal()
+
+hipval_threshold <- quantile(final_dataset$HIPVAL, 0.975, na.rm = TRUE)
+filtered_hipval <- final_dataset[final_dataset$HIPVAL <= hipval_threshold, ]
+
+options(scipen = 999)
+ggplot(filtered_hipval, aes(x = HIPVAL)) +
+  geom_histogram(aes(y = after_stat(count / sum(count))), bins = 50, fill = "#374e55", color = "white") +
+  scale_y_continuous(labels = scales::percent) +
+  labs(x = "Premium Spending, $", y = "Percent", title = " ") +
+  theme_minimal()
+
+
+```
+
+```{r}
+
+#chi-square tests for Table 1 
+#replicate covariate groups
+
+final_dataset <- final_dataset %>%
+
+  mutate(
+    age_group = "",
+    age_group = ifelse(AGE >= 19 & AGE <= 25, "19-25", age_group),
+    age_group = ifelse(AGE >= 26 & AGE <= 44, "26-44", age_group),
+    age_group = ifelse(AGE > 44, "45-64", age_group)
+  ) %>%
+
+  mutate(
+    race_group = "Other",
+    race_group = ifelse(RACE == 100, "White", race_group),
+    race_group = ifelse(RACE == 200, "Black", race_group),
+    race_group = ifelse(RACE %in% c(651, 652), "Asian", race_group),
+    race_group = ifelse(HISPAN %in% c(100, 200, 300, 400, 500, 600, 611, 612), "Hispanic", race_group)
+  ) %>%
+
+  mutate(
+    education_group = "",
+    education_group = ifelse(EDUC %in% c(2, 10, 20, 30, 40, 50, 60, 71, 73), "High School or Less", education_group),
+    education_group = ifelse(EDUC %in% c(92, 91, 81, 111, 125, 124, 123), "College or More", education_group)
+  ) %>%
+
+  mutate(
+    employment_status = "",
+    employment_status = ifelse(EMPSTAT %in% c(1, 10, 12), "Employed", employment_status),
+    employment_status = ifelse(EMPSTAT %in% c(21, 22), "Unemployed", employment_status),
+    employment_status = ifelse(EMPSTAT %in% c(32, 34, 36), "Not in Labor Force", employment_status)
+  ) %>%
+  
+  mutate(
+    poverty = "",  
+    poverty = ifelse(OFFPOV == 1, 1, poverty),
+    poverty = ifelse(OFFPOV == 2, 0, poverty)
+  )
+
+#set survey 
+svy <- as_survey_rep(final_dataset, weight = ASECWT, repweights = matches("REPWTP[0-9]+"))
+
+svychisq(~age_group+policy_change_state, design = svy)
+svychisq(~SEX+policy_change_state, design = svy)
+svychisq(~race_group+policy_change_state, design = svy)
+svychisq(~education_group+policy_change_state, design = svy)
+svychisq(~employment_status+policy_change_state, design = svy)
+svychisq(~poverty+policy_change_state, design = svy)
+
+```
+
+
+
+
