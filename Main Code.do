@@ -1,4 +1,6 @@
-****CODE PREP****
+*** DATA PREPARATION ***
+
+*Please note that this segment of code is provided by IPUMS CPS (https://cps.ipums.org/cps/index.shtml) to help format and label variables 
 
 cd "/Users/michael/Documents/2025 - NSA Evaluation/Analysis/Revision #1 Analysis"
 
@@ -1188,53 +1190,80 @@ label define dpcovly_lbl 02 `"Yes"', add
 label define dpcovly_lbl 99 `"NIU"', add
 label values dpcovly dpcovly_lbl
 
-* Subset to intervention and control states
+
+*** SAMPLE AND VARIABLE PREPARATION ***
+
+*----------------------------------------------------*
+* 1. Restrict Sample to Intervention & Control States
+*----------------------------------------------------*
+
+* Keep only individuals from the 24 selected states (intervention and control)
 keep if inlist(statefip, 11, 2, 15, 45, 21, 47, 1, 22, 5, 40, 20, 55, 46, 38, 30, 56, 16, 49, 6, 9, 12, 17, 24, 36)
 
-* Create indicator variable for intervention 
+* Create indicator: 1 = intervention state, 0 = control state
 gen policy_change_state = .
 replace policy_change_state = 1 if inlist(statefip, 11, 2, 15, 45, 21, 47, 1, 22, 5, 40, 20, 55, 46, 38, 30, 56, 16, 49)
 replace policy_change_state = 0 if inlist(statefip, 6, 9, 12, 17, 24, 36)
 
-* Subset to study period: ASEC 2019-2024
-* Exclude 2022 data 
+*-----------------------*
+* 2. Define Study Period 
+*-----------------------*
+
+* Keep ASEC data from 2019 to 2024, excluding 2022 
 keep if year >= 2019
 drop if year == 2022
 
-* Subset to participants with direct-purchase insurance 
+*-----------------------*
+* 3. Sample Restriction
+*-----------------------*
+
+* Include only individuals with direct-purchase insurance
 keep if dpcovly == 2
 
-* Subset to aduts 19-64
+* Restrict to adults ages 19–64
 drop if age < 19 
 drop if age > 64
 
-* Exclude participants with public insurance and employer-based insurance
+* Exclude those with public or employer-sponsored insurance
  drop if himcaidly == 2
  drop if himcarely  == 2
  drop if hichamp == 2
  drop if grpcovly == 2
 
-* Generate indicator variable for time period 
+ *-----------------------------------------------*
+* 4. Define Post-Policy Indicator (NSA Implementation)
+*------------------------------------------------*
+
+* NSA implemented in 2022, create indicator: 1 = post-NSA, 0 = pre-NSA
 gen post_NSA = .
 replace post_NSA = 0 if year < 2022 
 replace post_NSA = 1 if year > 2022 
 
-* Fix year variable (given 1-year lookback period)
+* Shift year variable back to reflect lookback measurement
 replace year = year - 1
 
-* Remove premium spending from healthcare spending 
+*------------------------------------------*
+* 5. Calculate Healthcare Spending Outcomes
+*------------------------------------------*
+
+* Remove premium amounts from healthcare spending to calculate out-of-pocket spending 
 replace moop = moop - hipval
+
+* Generate total spending, which includes both OOP and premium spending 
 gen total_spending = moop + hipval
 
-* Generate high burden medical spending outcome
+* Define high burden medical spending (10%+ of family income)
 gen high_medical_spending = .
 replace high_medical_spending = 1 if ftotval > 0 & (total_spending / ftotval) > 0.1
 replace high_medical_spending = 0 if ftotval > 0 & (total_spending / ftotval) <= 0.1
 replace high_medical_spending = 0 if total_spending == 0
 replace high_medical_spending = . if ftotval <= 0
-tabulate high_medical_spending
 
-* Inflation-adjust spending outcomes
+*----------------------------------------------*
+* 6. Inflation Adjustment (to 2023 dollars using CPI)
+*----------------------------------------------*
+
+* Adjust moop (out-of-pocket spending) and hipval (premium spending) separately
 replace moop = moop * (304.7/ 251.1) if year == 2018
 replace moop = moop * (304.7 / 255.7) if year == 2019
 replace moop = moop * (304.7 / 258.8) if year == 2020
@@ -1247,42 +1276,41 @@ replace hipval = hipval * (304.7 / 258.8) if year == 2020
 replace hipval = hipval * (304.7 / 271.0) if year == 2021
 replace hipval = hipval * (304.7 / 292.7) if year == 2022
 
-* Generate covariates
+*----------------------------------------*
+* 7. Generate Sociodemographic Covariates
+*----------------------------------------*
 
-* Age
+* Generate age groups
 gen age_group = ""
 replace age_group = "19-25" if age >= 19 & age <= 25
 replace age_group = "26-44" if age >= 26 & age <= 44
 replace age_group = "45-64" if age > 44
 
-* Race/Ethnicity
+* Generate race/ethnicity groups 
 gen race_group = "Other"
 replace race_group = "White" if race == 100
 replace race_group = "Black" if race == 200
 replace race_group = "Asian" if inlist(race, 651, 652)
 replace race_group = "Hispanic" if inlist(hispan, 100, 200, 300, 400, 500, 600, 611, 612)
 
-* Education
+* Generate education level groups 
 gen education_group = ""
 replace education_group = "High School or Less" if inlist(educ, 2, 10, 20, 30, 40, 50, 60, 71, 73)
 replace education_group = "College or More" if inlist(educ, 92, 91, 81, 111, 125, 124, 123)
 
-* Employment status
+* Generate employment status groups 
 gen employment_status = ""
 replace employment_status = "Employed" if inlist(empstat, 1, 10, 12)
 replace employment_status = "Unemployed" if inlist(empstat, 21, 22)
 replace employment_status = "Not in Labor Force" if inlist(empstat, 32, 34, 36)
 
-* Poverty 
+* Generate poverty status groups 
 gen poverty = .
 replace poverty = 1 if offpov == 1
 replace poverty = 0 if offpov == 2
  
-* Convert to factor variables 
+* Convert categorical covariates to factor variables 
 encode age_group, gen(factor_age)
 encode education_group, gen(factor_education)
 encode employment_status, gen(factor_employment)
 encode race_group, gen(factor_race)
-
-
-

@@ -1,6 +1,6 @@
 ```{r}
 
-###load packages and data 
+###load packages and read in data###
 
 library(ipumsr)
 library(survey)
@@ -15,33 +15,34 @@ data <- read_ipums_micro(ddi)
 
 ```{r}
 
-###sample preparation
+###Restrict Sample to Intervention & Control States###
 
-#select states (including intervention & control)
+#Keep only individuals from the 24 selected states (intervention and control)
 data <- subset(data, data$STATEFIP == 11 | data$STATEFIP == 2 | data$STATEFIP == 15 | data$STATEFIP == 45 | data$STATEFIP == 21 | data$STATEFIP == 47 | data$STATEFIP == 1 | data$STATEFIP == 22 | data$STATEFIP == 5 | data$STATEFIP == 40 | data$STATEFIP == 20 | data$STATEFIP == 55 | data$STATEFIP == 46 | data$STATEFIP == 38 | data$STATEFIP == 30 | data$STATEFIP == 56 | data$STATEFIP == 16 | data$STATEFIP == 49 | data$STATEFIP == 6 | data$STATEFIP == 9 | data$STATEFIP == 12 | data$STATEFIP == 17 | data$STATEFIP == 24 | data$STATEFIP == 36)
 
-#create indicator variable for intervention 
+# Create indicator: TRUE = intervention state, FALSE = control state
 data$policy_change_state <- NA
 
-#designate intervention states 
 data$policy_change_state[data$STATEFIP == 11 | data$STATEFIP == 2 | data$STATEFIP == 15 | data$STATEFIP == 45 | data$STATEFIP == 21 | data$STATEFIP == 47 | data$STATEFIP == 1 | data$STATEFIP == 22 | data$STATEFIP == 5 | data$STATEFIP == 40 | data$STATEFIP == 20 | data$STATEFIP == 55 | data$STATEFIP == 46 | data$STATEFIP == 38 | data$STATEFIP == 30 | data$STATEFIP == 56 | data$STATEFIP == 16 | data$STATEFIP == 49] <- TRUE
 
-#designate control states
 data$policy_change_state[data$STATEFIP == 6 | data$STATEFIP == 9 | data$STATEFIP == 12 | data$STATEFIP == 17 | data$STATEFIP == 24 | data$STATEFIP == 36] <- FALSE
 
-#subset to study period: ASEC 2019-2024
-data <- subset(data, data$YEAR >= 2019)
 
-#exclude 2022 data 
+###Define Study Period###
+
+# Keep ASEC data from 2019 to 2024, excluding 2022 
+data <- subset(data, data$YEAR >= 2019)
 data <- subset(data, data$YEAR != 2022)
 
-#subset to participants with direct-purchase insurance 
+###Sample Restriction###
+
+# Include only individuals with direct-purchase insurance
 data <- subset(data, data$DPCOVLY == 2)
 
-#subset to aduts 19-64
+# Restrict to adults ages 19–64
 data <- subset(data, data$AGE >= 19 & data$AGE <= 64)
 
-#exclude participants with public insurance and employer-sponsored insurance 
+# Exclude those with public or employer-sponsored insurance
 data <- subset(data, data$HIMCAIDLY != 2)
 data <- subset(data, data$HIMCARELY != 2)
 data <- subset(data, data$HICHAMP != 2)
@@ -51,24 +52,28 @@ data <- subset(data, data$GRPCOVLY != 2)
 
 ```{r}
 
-####generate outcomes
+###Calculate Healthcare Spending Outcomes###
 
-#remove premium spending from healthcare spending 
+# Remove premium amounts from healthcare spending to calculate out-of-pocket spending 
 data$MOOP <- (data$MOOP - data$HIPVAL)
 
-#generate high burden medical spending
+# Generate total spending, which includes both OOP and premium spending 
 data$total_spending <- (data$MOOP + data$HIPVAL)
+
+# Define high burden medical spending (10%+ of family income)
 data$high_medical_spending <- NA
 data$high_medical_spending <- (data$total_spending)/(data$FTOTVAL) > 0.1
 data$high_medical_spending[data$total_spending == 0] <- FALSE
 data$high_medical_spending[data$FTOTVAL <= 0] <- NA 
 
-table(data$high_medical_spending)
 ```
 
 ```{r}
 
-#inflation-adjust spending outcomes
+###Inflation Adjustment (to 2023 dollars using CPI)###
+
+#Adjust moop (out-of-pocket spending) and hipval (premium spending) separately
+
 data <- data %>%
   mutate(MOOP = case_when(
     YEAR == 2019 ~ data$MOOP*(304.7/251.1),
@@ -93,9 +98,10 @@ data <- data %>%
 
 ```{r}
 
+# Re-name dataset as "final_dataset"
 final_dataset <- data
 
-#fix year variable (given 1-year lookback period)
+# Shift year variable back to reflect lookback measurement
 final_dataset$YEAR <- as.numeric(final_dataset$YEAR)
 final_dataset$YEAR <- (final_dataset$YEAR - 1)
 
@@ -103,12 +109,12 @@ final_dataset$YEAR <- (final_dataset$YEAR - 1)
 
 ```{r}
 
-#survey set
+###Generate Figures###
+
+# declare complex survey design
 svy <- as_survey_rep(final_dataset, weight = ASECWT, repweights = matches("REPWTP[0-9]+"))
 
-###generate plots
-
-#OOP Spending
+# generate trends in OOP spending plot (2019-2024)
 
 agg_data <- svyby(~MOOP, by = ~YEAR + policy_change_state, 
                  design = svy, 
@@ -129,7 +135,7 @@ ggplot(agg_data, aes(x = YEAR, y = MOOP, color = policy_change_state, group = po
   scale_x_continuous(breaks = seq(min(agg_data$YEAR), max(agg_data$YEAR), by = 1),
     labels = c("2019", "2020", "2021", "2022", "2023", "2024"))
 
-#premium spending
+# generate trends in premium spending plot (2019-2024)
 
 agg_data_2 <- svyby(~HIPVAL, by = ~YEAR + policy_change_state, 
                  design = svy, 
@@ -149,7 +155,7 @@ ggplot(agg_data_2, aes(x = YEAR, y = HIPVAL, color = policy_change_state, group 
   scale_x_continuous(breaks = seq(min(agg_data$YEAR), max(agg_data$YEAR), by = 1),
     labels = c("2019", "2020", "2021", "2022", "2023", "2024"))
 
-#high-burden medical spending
+# generate trends in high-burden medical spending plot (2019-2024)
 
 agg_data_3 <- svyby(~high_medical_spending, by = ~YEAR + policy_change_state, 
                  design = svy, 
@@ -174,11 +180,15 @@ ggplot(agg_data_3, aes(x = YEAR, y = high_medical_spendingTRUE*100, color = poli
 
 ```{r}
 
-#graph parallel trends graphs 
+###Generate Parallel Trends Figures###
 
+# Keep only pre-NSA data 
 parallel_trends <- subset(final_dataset, final_dataset$YEAR <= 2021)
 
+# Re-declare complex survey design
 svy_parallel <- as_survey_rep(parallel_trends, weight = ASECWT, repweights = matches("REPWTP[0-9]+"))
+
+# generate OOP pre-NSA Figure 
 
 agg_data <- svyby(~MOOP, by = ~YEAR + policy_change_state, 
                  design = svy_parallel, 
@@ -205,6 +215,8 @@ agg_data_2 <- svyby(~HIPVAL, by = ~YEAR + policy_change_state,
                  FUN = svymean, 
                  na.rm = TRUE)
 
+# generate premium pre-NSA Figure 
+
 ggplot(agg_data_2, aes(x = YEAR, y = HIPVAL, color = policy_change_state, group = policy_change_state)) +
   geom_line()  +
   labs(title = " ",
@@ -224,6 +236,8 @@ agg_data_4 <- svyby(~high_medical_spending, by = ~YEAR + policy_change_state,
                  FUN = svymean, 
                  na.rm = TRUE)
 
+# generate high-burden medical spending pre-NSA Figure 
+
 ggplot(agg_data_4, aes(x = YEAR, y = high_medical_spendingTRUE*100, color = policy_change_state, group = policy_change_state)) +
   geom_line()  +
   labs(title = " ",
@@ -242,7 +256,10 @@ ggplot(agg_data_4, aes(x = YEAR, y = high_medical_spendingTRUE*100, color = poli
 
 ```{r}
 
-###generate Figure 1 (map of surprise billing protections prior to the NSA)
+###generate map###
+#states with no surprise billing protections prior to NSA (red)
+#states with partial surprise billing protections prior to NSA (yellow)
+#states with comprehensive billing protections prior to NSA (blue)
 
 library(usmap)
 library(ggplot2)
@@ -263,21 +280,22 @@ plot_usmap(regions = "states", data = my_data, values = "values", color = "black
 
 #plot outcome distribution
 
-#remove top 2.5th percentile 
-
 library(ggplot2)
 
+#remove data from the top 2.5th percentile 
 moop_threshold <- quantile(final_dataset$MOOP, 0.975, na.rm = TRUE)
 filtered_moop <- final_dataset[final_dataset$MOOP <= moop_threshold, ]
+
+hipval_threshold <- quantile(final_dataset$HIPVAL, 0.975, na.rm = TRUE)
+filtered_hipval <- final_dataset[final_dataset$HIPVAL <= hipval_threshold, ]
+
+#plot histogram showing distribution of healthcare spending outcomes 
 
 ggplot(filtered_moop, aes(x = MOOP)) +
   geom_histogram(aes(y = after_stat(count / sum(count))), bins = 50, fill = "#374e55", color = "white") +
   scale_y_continuous(labels = scales::percent) +
   labs(x = "Out-of-Pocket Spending, $", y = "Percent", title = " ") +
   theme_minimal()
-
-hipval_threshold <- quantile(final_dataset$HIPVAL, 0.975, na.rm = TRUE)
-filtered_hipval <- final_dataset[final_dataset$HIPVAL <= hipval_threshold, ]
 
 options(scipen = 999)
 ggplot(filtered_hipval, aes(x = HIPVAL)) +
@@ -291,11 +309,11 @@ ggplot(filtered_hipval, aes(x = HIPVAL)) +
 
 ```{r}
 
-#chi-square tests for Table 1 
-#replicate covariate groups
+###Generate Sociodemographic Covariates###
 
 final_dataset <- final_dataset %>%
-
+  
+  # Generate age groups
   mutate(
     age_group = "",
     age_group = ifelse(AGE >= 19 & AGE <= 25, "19-25", age_group),
@@ -303,6 +321,7 @@ final_dataset <- final_dataset %>%
     age_group = ifelse(AGE > 44, "45-64", age_group)
   ) %>%
 
+  # Generate race/ethnicity groups 
   mutate(
     race_group = "Other",
     race_group = ifelse(RACE == 100, "White", race_group),
@@ -311,12 +330,14 @@ final_dataset <- final_dataset %>%
     race_group = ifelse(HISPAN %in% c(100, 200, 300, 400, 500, 600, 611, 612), "Hispanic", race_group)
   ) %>%
 
+  # Generate education level groups 
   mutate(
     education_group = "",
     education_group = ifelse(EDUC %in% c(2, 10, 20, 30, 40, 50, 60, 71, 73), "High School or Less", education_group),
     education_group = ifelse(EDUC %in% c(92, 91, 81, 111, 125, 124, 123), "College or More", education_group)
   ) %>%
 
+  # Generate employment status groups 
   mutate(
     employment_status = "",
     employment_status = ifelse(EMPSTAT %in% c(1, 10, 12), "Employed", employment_status),
@@ -324,14 +345,17 @@ final_dataset <- final_dataset %>%
     employment_status = ifelse(EMPSTAT %in% c(32, 34, 36), "Not in Labor Force", employment_status)
   ) %>%
   
+  # Generate poverty status groups 
   mutate(
     poverty = "",  
     poverty = ifelse(OFFPOV == 1, 1, poverty),
     poverty = ifelse(OFFPOV == 2, 0, poverty)
   )
 
-#set survey 
+# declare complex survey design
 svy <- as_survey_rep(final_dataset, weight = ASECWT, repweights = matches("REPWTP[0-9]+"))
+
+# run Rao-Scott chi-square tests comparing sociodemographic characteristics of participants residing in intervention versus control states
 
 svychisq(~age_group+policy_change_state, design = svy)
 svychisq(~SEX+policy_change_state, design = svy)
@@ -341,7 +365,4 @@ svychisq(~employment_status+policy_change_state, design = svy)
 svychisq(~poverty+policy_change_state, design = svy)
 
 ```
-
-
-
 

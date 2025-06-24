@@ -1,94 +1,20 @@
-* Declare survey design 
+*-------------------------------*
+* Declare Complex Survey Design
+*-------------------------------*
+
 . svyset [iw=asecwt], sdrweight(repwtp1-repwtp160) vce(sdr) mse
 
-* Summarize outcomes 
+*-------------------------*
+* Descriptive Statistics: 
+*-------------------------*
+
+* Estimate unadjusted and weighted means + 95% CI of outcomes by intervention status and change 
 
 svy: mean moop, over(policy_change_state post_NSA)
 svy: mean hipval, over(policy_change_state post_NSA)
 svy: mean high_medical_spending, over(policy_change_state post_NSA)
 
-* Adjusted regression models
-gen interaction = post_NSA * policy_change_state
-svy: glm moop interaction post_NSA policy_change_state i.year i.statefip i.factor_age i.factor_education i.factor_employment i.factor_race i.poverty i.sex, family(gamma) link(log) 
-lincom interaction
-scalar coef = r(estimate)
-scalar lb   = r(lb)
-scalar ub   = r(ub)
-scalar pct_change     = (exp(coef) - 1) * 100
-scalar pct_change_lb  = (exp(lb) - 1) * 100
-scalar pct_change_ub  = (exp(ub) - 1) * 100
-
-di as result round(pct_change, 0.1) "%"" (95% CI: " round(pct_change_lb, 0.1) "% to " round(pct_change_ub, 0.1) "%)"
-
-lincom post_NSA
-scalar coef = r(estimate)
-scalar lb   = r(lb)
-scalar ub   = r(ub)
-scalar pct_change     = (exp(coef) - 1) * 100
-scalar pct_change_lb  = (exp(lb) - 1) * 100
-scalar pct_change_ub  = (exp(ub) - 1) * 100
-
-di as result round(pct_change, 0.1) "%"" (95% CI: " round(pct_change_lb, 0.1) "% to " round(pct_change_ub, 0.1) "%)"
-
-margins, dydx(interaction) 
-
-svy: glm hipval interaction post_NSA policy_change_state i.year i.statefip i.factor_age i.factor_education i.factor_employment i.factor_race i.poverty i.sex, family(gamma) link(log) 
-
-lincom interaction
-scalar coef = r(estimate)
-scalar lb   = r(lb)
-scalar ub   = r(ub)
-scalar pct_change     = (exp(coef) - 1) * 100
-scalar pct_change_lb  = (exp(lb) - 1) * 100
-scalar pct_change_ub  = (exp(ub) - 1) * 100
-
-di as result round(pct_change, 0.1) "%"" (95% CI: " round(pct_change_lb, 0.1) "% to " round(pct_change_ub, 0.1) "%)"
-
-lincom post_NSA
-scalar coef = r(estimate)
-scalar lb   = r(lb)
-scalar ub   = r(ub)
-scalar pct_change     = (exp(coef) - 1) * 100
-scalar pct_change_lb  = (exp(lb) - 1) * 100
-scalar pct_change_ub  = (exp(ub) - 1) * 100
-
-di as result round(pct_change, 0.1) "%"" (95% CI: " round(pct_change_lb, 0.1) "% to " round(pct_change_ub, 0.1) "%)"
-
-margins, dydx(interaction) 
-
-svy: regress high_medical_spending interaction post_NSA policy_change_state i.year i.statefip i.factor_age i.factor_education i.factor_employment i.factor_race i.sex
-
-* Re-level models 
-
-svy: glm moop post_NSA##ib1.policy_change_state i.year i.statefip i.factor_age i.factor_education i.factor_employment i.factor_race i.poverty i.sex, family(gamma) link(log)  
-
-lincom 1.post_NSA
-scalar coef = r(estimate)
-scalar lb   = r(lb)
-scalar ub   = r(ub)
-
-scalar pct_change     = (exp(coef) - 1) * 100
-scalar pct_change_lb  = (exp(lb) - 1) * 100
-scalar pct_change_ub  = (exp(ub) - 1) * 100
-
-di as result round(pct_change, 0.1) "%"" (95% CI: " round(pct_change_lb, 0.1) "% to " round(pct_change_ub, 0.1) "%)"
-
-svy: glm hipval post_NSA##ib1.policy_change_state i.year i.statefip i.factor_age i.factor_education i.factor_employment i.factor_race i.poverty i.sex, family(gamma) link(log)  
-
-lincom 1.post_NSA
-scalar coef = r(estimate)
-scalar lb   = r(lb)
-scalar ub   = r(ub)
-
-scalar pct_change     = (exp(coef) - 1) * 100
-scalar pct_change_lb  = (exp(lb) - 1) * 100
-scalar pct_change_ub  = (exp(ub) - 1) * 100
-
-di as result round(pct_change, 0.1) "%"" (95% CI: " round(pct_change_lb, 0.1) "% to " round(pct_change_ub, 0.1) "%)"
-
-svy: regress high_medical_spending post_NSA##ib1.policy_change_state i.year i.statefip i.factor_age i.factor_education i.factor_employment i.factor_race i.sex
-
-* Covariate summary 
+* Tabulate covariate count and weighted percentages by intervention status (Table 1)
 
 tabulate policy_change_state
 tabulate policy_change_state age_group
@@ -105,25 +31,149 @@ svy: tab policy_change_state education_group, row
 svy: tab policy_change_state employment_status, row 
 svy: tab policy_change_state poverty, row  
 
-* Parallel trends testing 
+*-------------------*
+* Regression Models
+*-------------------*
+
+* Create interaction term for policy*time (DiD estimator)
+gen interaction = post_NSA * policy_change_state
+
+* Model 1: Out-of-pocket spending 
+svy: glm moop interaction post_NSA policy_change_state i.year i.statefip i.factor_age i.factor_education i.factor_employment i.factor_race i.poverty i.sex, family(gamma) link(log) 
+
+* Calculate and display relative percentage change for DiD estimator and post-NSA indicator 
+lincom interaction
+scalar coef = r(estimate)
+scalar lb   = r(lb)
+scalar ub   = r(ub)
+scalar pct_change     = (exp(coef) - 1) * 100
+scalar pct_change_lb  = (exp(lb) - 1) * 100
+scalar pct_change_ub  = (exp(ub) - 1) * 100
+
+di as result round(pct_change, 0.1) "%"" (95% CI: " round(pct_change_lb, 0.1) "% to " round(pct_change_ub, 0.1) "%)"
+
+lincom post_NSA
+scalar coef = r(estimate)
+scalar lb   = r(lb)
+scalar ub   = r(ub)
+scalar pct_change     = (exp(coef) - 1) * 100
+scalar pct_change_lb  = (exp(lb) - 1) * 100
+scalar pct_change_ub  = (exp(ub) - 1) * 100
+
+di as result round(pct_change, 0.1) "%"" (95% CI: " round(pct_change_lb, 0.1) "% to " round(pct_change_ub, 0.1) "%)"
+
+* Estimate marginal effect of DiD estimator (absolute change)
+
+margins, dydx(interaction) 
+
+* Model 2: Premium spending 
+
+svy: glm hipval interaction post_NSA policy_change_state i.year i.statefip i.factor_age i.factor_education i.factor_employment i.factor_race i.poverty i.sex, family(gamma) link(log) 
+
+* Calculate and display relative percentage change for DiD estimator and post-NSA indicator 
+lincom interaction
+scalar coef = r(estimate)
+scalar lb   = r(lb)
+scalar ub   = r(ub)
+scalar pct_change     = (exp(coef) - 1) * 100
+scalar pct_change_lb  = (exp(lb) - 1) * 100
+scalar pct_change_ub  = (exp(ub) - 1) * 100
+
+di as result round(pct_change, 0.1) "%"" (95% CI: " round(pct_change_lb, 0.1) "% to " round(pct_change_ub, 0.1) "%)"
+
+lincom post_NSA
+scalar coef = r(estimate)
+scalar lb   = r(lb)
+scalar ub   = r(ub)
+scalar pct_change     = (exp(coef) - 1) * 100
+scalar pct_change_lb  = (exp(lb) - 1) * 100
+scalar pct_change_ub  = (exp(ub) - 1) * 100
+
+di as result round(pct_change, 0.1) "%"" (95% CI: " round(pct_change_lb, 0.1) "% to " round(pct_change_ub, 0.1) "%)"
+
+margins, dydx(interaction) 
+
+* Model 3: High Burden Medical Spending (binary outcome)
+
+svy: regress high_medical_spending interaction post_NSA policy_change_state i.year i.statefip i.factor_age i.factor_education i.factor_employment i.factor_race i.sex
+
+
+*--------------------------*
+* Re-level Policy Variable
+*--------------------------*
+
+* Model 1: Out-of-pocket spending 
+svy: glm moop post_NSA##ib1.policy_change_state i.year i.statefip i.factor_age i.factor_education i.factor_employment i.factor_race i.poverty i.sex, family(gamma) link(log)  
+
+* Calculate and display relative percentage change for post-NSA indicator 
+
+lincom 1.post_NSA
+scalar coef = r(estimate)
+scalar lb   = r(lb)
+scalar ub   = r(ub)
+
+scalar pct_change     = (exp(coef) - 1) * 100
+scalar pct_change_lb  = (exp(lb) - 1) * 100
+scalar pct_change_ub  = (exp(ub) - 1) * 100
+
+di as result round(pct_change, 0.1) "%"" (95% CI: " round(pct_change_lb, 0.1) "% to " round(pct_change_ub, 0.1) "%)"
+
+* Model 2: Premium spending 
+
+svy: glm hipval post_NSA##ib1.policy_change_state i.year i.statefip i.factor_age i.factor_education i.factor_employment i.factor_race i.poverty i.sex, family(gamma) link(log)  
+
+* Calculate and display relative percentage change for post-NSA indicator 
+
+lincom 1.post_NSA
+scalar coef = r(estimate)
+scalar lb   = r(lb)
+scalar ub   = r(ub)
+
+scalar pct_change     = (exp(coef) - 1) * 100
+scalar pct_change_lb  = (exp(lb) - 1) * 100
+scalar pct_change_ub  = (exp(ub) - 1) * 100
+
+di as result round(pct_change, 0.1) "%"" (95% CI: " round(pct_change_lb, 0.1) "% to " round(pct_change_ub, 0.1) "%)"
+
+* Model 3: High Burden Medical Spending (binary outcome)
+
+svy: regress high_medical_spending post_NSA##ib1.policy_change_state i.year i.statefip i.factor_age i.factor_education i.factor_employment i.factor_race i.sex
+
+*-------------------------------------------*
+* Pre-Trend Test: Parallel Trends Assumption
+*-------------------------------------------*
+
+* Keep only pre-NSA data 
 
 keep if year <= 2021
 
+* Re-declare complex survey design
 . svyset [iw=asecwt], sdrweight(repwtp1-repwtp160) vce(sdr) mse
+
+* Test for differential pre-trends using year × treatment interaction
 
 svy: regress moop policy_change_state##c.year 
 svy: regress hipval policy_change_state##c.year 
 svy: regress high_medical_spending policy_change_state##c.year 
 
-* Exploratory subgroup analyses 
+*------------------------------*
+* Exploratory Subgroup Analysis
+*------------------------------*
+
+* Declare complex survey design
 
 . svyset [iw=asecwt], sdrweight(repwtp1-repwtp160) vce(sdr) mse
 
-* By sex 
+* Subgroup: By Sex
+* Re-run main regression models with 3-way interaction between DiD estimator and sex indicator 
 
-svy, subpop(if sex == 1): glm moop interaction post_NSA policy_change_state i.year i.statefip i.factor_age i.factor_education i.factor_employment i.factor_race i.poverty, family(gamma) link(log) 
+* Model 1: Out-of-pocket spending 
+svy: glm moop post_NSA##policy_change_state##i.sex i.year i.statefip i.factor_age i.factor_education i.factor_employment i.factor_race i.poverty, family(gamma) link(log)
 
-lincom interaction
+* Calculate and display relative percentage change for 3-way interaction term
+
+lincom 1.post_NSA#1.policy_change_state#2.sex
+
 scalar coef = r(estimate)
 scalar lb   = r(lb)
 scalar ub   = r(ub)
@@ -133,9 +183,13 @@ scalar pct_change_ub  = (exp(ub) - 1) * 100
 
 di as result round(pct_change, 0.1) "%"" (95% CI: " round(pct_change_lb, 0.1) "% to " round(pct_change_ub, 0.1) "%)"
 
-svy, subpop(if sex == 1): glm hipval interaction post_NSA policy_change_state i.year i.statefip i.factor_age i.factor_education i.factor_employment i.factor_race i.poverty, family(gamma) link(log) 
+* Model 2: Premium spending 
+svy: glm hipval post_NSA##policy_change_state##i.sex i.year i.statefip i.factor_age i.factor_education i.factor_employment i.factor_race i.poverty, family(gamma) link(log)
 
-lincom interaction
+* Calculate and display relative percentage change for 3-way interaction term
+
+lincom 1.post_NSA#1.policy_change_state#2.sex
+
 scalar coef = r(estimate)
 scalar lb   = r(lb)
 scalar ub   = r(ub)
@@ -145,11 +199,19 @@ scalar pct_change_ub  = (exp(ub) - 1) * 100
 
 di as result round(pct_change, 0.1) "%"" (95% CI: " round(pct_change_lb, 0.1) "% to " round(pct_change_ub, 0.1) "%)"
 
-svy, subpop(if sex == 1): regress high_medical_spending interaction post_NSA policy_change_state i.year i.statefip i.factor_age i.factor_education i.factor_employment i.factor_race 
+* Model 3: High Burden Medical Spending (binary outcome)
 
-svy, subpop(if sex == 2): glm moop interaction post_NSA policy_change_state i.year i.statefip i.factor_age i.factor_education i.factor_employment i.factor_race i.poverty, family(gamma) link(log)
+svy: regress high_medical_spending post_NSA##policy_change_state##i.sex i.year i.statefip i.factor_age i.factor_education i.factor_employment i.factor_race 
 
-lincom interaction
+* Subgroup: By Race/Ethnicity (repeated from above)
+
+svy: glm moop post_NSA##policy_change_state##i.factor_race i.year i.statefip i.factor_age i.factor_education i.factor_employment i.sex i.poverty, family(gamma) link(log)
+
+
+* Calculate and display relative percentage change for 3-way interaction term (Black vs Asian)
+
+lincom 1.post_NSA#1.policy_change_state#2.factor_race
+
 scalar coef = r(estimate)
 scalar lb   = r(lb)
 scalar ub   = r(ub)
@@ -159,9 +221,10 @@ scalar pct_change_ub  = (exp(ub) - 1) * 100
 
 di as result round(pct_change, 0.1) "%"" (95% CI: " round(pct_change_lb, 0.1) "% to " round(pct_change_ub, 0.1) "%)"
 
-svy, subpop(if sex == 2): glm hipval interaction post_NSA policy_change_state i.year i.statefip i.factor_age i.factor_education i.factor_employment i.factor_race i.poverty, family(gamma) link(log)
+* Calculate and display relative percentage change for 3-way interaction term (Hispanic vs Asian)
 
-lincom interaction
+lincom 1.post_NSA#1.policy_change_state#3.factor_race
+
 scalar coef = r(estimate)
 scalar lb   = r(lb)
 scalar ub   = r(ub)
@@ -171,13 +234,10 @@ scalar pct_change_ub  = (exp(ub) - 1) * 100
 
 di as result round(pct_change, 0.1) "%"" (95% CI: " round(pct_change_lb, 0.1) "% to " round(pct_change_ub, 0.1) "%)"
 
-svy, subpop(if sex == 2): regress high_medical_spending interaction post_NSA policy_change_state i.year i.statefip i.factor_age i.factor_education i.factor_employment i.factor_race 
+* Calculate and display relative percentage change for 3-way interaction term (Other vs Asian)
 
-* By race/ethnicity 
+lincom 1.post_NSA#1.policy_change_state#4.factor_race
 
-svy, subpop(if factor_race == 1): glm moop interaction post_NSA policy_change_state i.year i.statefip i.factor_age i.factor_education i.factor_employment i.sex i.poverty, family(gamma) link(log)
-
-lincom interaction
 scalar coef = r(estimate)
 scalar lb   = r(lb)
 scalar ub   = r(ub)
@@ -187,9 +247,10 @@ scalar pct_change_ub  = (exp(ub) - 1) * 100
 
 di as result round(pct_change, 0.1) "%"" (95% CI: " round(pct_change_lb, 0.1) "% to " round(pct_change_ub, 0.1) "%)"
 
-svy, subpop(if factor_race == 1): glm hipval interaction post_NSA policy_change_state i.year i.statefip i.factor_age i.factor_education i.factor_employment i.sex i.poverty, family(gamma) link(log)
+* Calculate and display relative percentage change for 3-way interaction term (White vs Asian)
 
-lincom interaction
+lincom 1.post_NSA#1.policy_change_state#5.factor_race
+
 scalar coef = r(estimate)
 scalar lb   = r(lb)
 scalar ub   = r(ub)
@@ -199,11 +260,12 @@ scalar pct_change_ub  = (exp(ub) - 1) * 100
 
 di as result round(pct_change, 0.1) "%"" (95% CI: " round(pct_change_lb, 0.1) "% to " round(pct_change_ub, 0.1) "%)"
 
-svy, subpop(if factor_race == 1): regress high_medical_spending interaction post_NSA policy_change_state i.year i.statefip i.factor_age i.factor_education i.factor_employment i.sex
+svy: glm hipval post_NSA##policy_change_state##i.factor_race i.year i.statefip i.factor_age i.factor_education i.factor_employment i.sex i.poverty, family(gamma) link(log)
 
-svy, subpop(if factor_race == 2): glm moop interaction post_NSA policy_change_state i.year i.statefip i.factor_age i.factor_education i.factor_employment i.sex i.poverty, family(gamma) link(log) 
+* Calculate and display relative percentage change for 3-way interaction term (Black vs Asian)
 
-lincom interaction
+lincom 1.post_NSA#1.policy_change_state#2.factor_race
+
 scalar coef = r(estimate)
 scalar lb   = r(lb)
 scalar ub   = r(ub)
@@ -213,9 +275,10 @@ scalar pct_change_ub  = (exp(ub) - 1) * 100
 
 di as result round(pct_change, 0.1) "%"" (95% CI: " round(pct_change_lb, 0.1) "% to " round(pct_change_ub, 0.1) "%)"
 
-svy, subpop(if factor_race == 2): glm hipval interaction post_NSA policy_change_state i.year i.statefip i.factor_age i.factor_education i.factor_employment i.sex i.poverty, family(gamma) link(log) 
+* Calculate and display relative percentage change for 3-way interaction term (Hispanic vs Asian)
 
-lincom interaction
+lincom 1.post_NSA#1.policy_change_state#3.factor_race
+
 scalar coef = r(estimate)
 scalar lb   = r(lb)
 scalar ub   = r(ub)
@@ -225,11 +288,10 @@ scalar pct_change_ub  = (exp(ub) - 1) * 100
 
 di as result round(pct_change, 0.1) "%"" (95% CI: " round(pct_change_lb, 0.1) "% to " round(pct_change_ub, 0.1) "%)"
 
-svy, subpop(if factor_race == 2): regress high_medical_spending interaction post_NSA policy_change_state i.year i.statefip i.factor_age i.factor_education i.factor_employment i.sex 
+* Calculate and display relative percentage change for 3-way interaction term (Other vs Asian)
 
-svy, subpop(if factor_race == 3): glm moop interaction post_NSA policy_change_state i.year i.statefip i.factor_age i.factor_education i.factor_employment i.sex i.poverty, family(gamma) link(log) 
+lincom 1.post_NSA#1.policy_change_state#4.factor_race
 
-lincom interaction
 scalar coef = r(estimate)
 scalar lb   = r(lb)
 scalar ub   = r(ub)
@@ -239,9 +301,10 @@ scalar pct_change_ub  = (exp(ub) - 1) * 100
 
 di as result round(pct_change, 0.1) "%"" (95% CI: " round(pct_change_lb, 0.1) "% to " round(pct_change_ub, 0.1) "%)"
 
-svy, subpop(if factor_race == 3): glm hipval interaction post_NSA policy_change_state i.year i.statefip i.factor_age i.factor_education i.factor_employment i.sex i.poverty, family(gamma) link(log) 
+* Calculate and display relative percentage change for 3-way interaction term (White vs Asian)
 
-lincom interaction
+lincom 1.post_NSA#1.policy_change_state#5.factor_race
+
 scalar coef = r(estimate)
 scalar lb   = r(lb)
 scalar ub   = r(ub)
@@ -251,11 +314,16 @@ scalar pct_change_ub  = (exp(ub) - 1) * 100
 
 di as result round(pct_change, 0.1) "%"" (95% CI: " round(pct_change_lb, 0.1) "% to " round(pct_change_ub, 0.1) "%)"
 
-svy, subpop(if factor_race == 3): regress high_medical_spending interaction post_NSA policy_change_state i.year i.statefip i.factor_age i.factor_education i.factor_employment i.sex 
+svy: regress high_medical_spending post_NSA##policy_change_state##i.factor_race i.year i.statefip i.factor_age i.factor_education i.factor_employment i.sex 
 
-svy, subpop(if factor_race == 5): glm moop interaction post_NSA policy_change_state i.year i.statefip i.factor_age i.factor_education i.factor_employment i.sex i.poverty, family(gamma) link(log)
+* Subgroup: By Education Level (repeated from above)
 
-lincom interaction
+svy: glm moop post_NSA##policy_change_state##i.factor_education i.year i.statefip i.factor_age i.factor_race i.factor_employment i.sex i.poverty, family(gamma) link(log)
+
+* Calculate and display relative percentage change for 3-way interaction term
+
+lincom 1.post_NSA#1.policy_change_state#2.factor_education
+
 scalar coef = r(estimate)
 scalar lb   = r(lb)
 scalar ub   = r(ub)
@@ -265,9 +333,10 @@ scalar pct_change_ub  = (exp(ub) - 1) * 100
 
 di as result round(pct_change, 0.1) "%"" (95% CI: " round(pct_change_lb, 0.1) "% to " round(pct_change_ub, 0.1) "%)"
 
-svy, subpop(if factor_race == 5): glm hipval interaction post_NSA policy_change_state i.year i.statefip i.factor_age i.factor_education i.factor_employment i.sex i.poverty, family(gamma) link(log) 
+svy: glm hipval post_NSA##policy_change_state##i.factor_education i.year i.statefip i.factor_age i.factor_race i.factor_employment i.sex i.poverty, family(gamma) link(log)
 
-lincom interaction
+lincom 1.post_NSA#1.policy_change_state#2.factor_education
+
 scalar coef = r(estimate)
 scalar lb   = r(lb)
 scalar ub   = r(ub)
@@ -277,13 +346,16 @@ scalar pct_change_ub  = (exp(ub) - 1) * 100
 
 di as result round(pct_change, 0.1) "%"" (95% CI: " round(pct_change_lb, 0.1) "% to " round(pct_change_ub, 0.1) "%)"
 
-svy, subpop(if factor_race == 5): regress high_medical_spending interaction post_NSA policy_change_state i.year i.statefip i.factor_age i.factor_education i.factor_employment i.sex 
+svy: regress high_medical_spending post_NSA##policy_change_state##i.factor_education i.year i.statefip i.factor_age i.factor_race i.factor_employment i.sex 
 
-* By education level
+* Subgroup: By Employment Status (repeated from above)
 
-svy, subpop(if factor_education == 1): glm moop interaction post_NSA policy_change_state i.year i.statefip i.factor_age i.factor_race i.factor_employment i.sex i.poverty, family(gamma) link(log) 
+svy: glm moop post_NSA##policy_change_state##i.factor_employment i.year i.statefip i.factor_age i.factor_race i.factor_education i.sex i.poverty, family(gamma) link(log)
 
-lincom interaction
+* Calculate and display relative percentage change for 3-way interaction term (employed vs not in labor force)
+
+lincom 1.post_NSA#1.policy_change_state#2.factor_employment
+
 scalar coef = r(estimate)
 scalar lb   = r(lb)
 scalar ub   = r(ub)
@@ -293,9 +365,11 @@ scalar pct_change_ub  = (exp(ub) - 1) * 100
 
 di as result round(pct_change, 0.1) "%"" (95% CI: " round(pct_change_lb, 0.1) "% to " round(pct_change_ub, 0.1) "%)"
 
-svy, subpop(if factor_education == 1): glm hipval interaction post_NSA policy_change_state i.year i.statefip i.factor_age i.factor_race i.factor_employment i.sex i.poverty, family(gamma) link(log) 
 
-lincom interaction
+* Calculate and display relative percentage change for 3-way interaction term (employed vs unemployed)
+
+lincom 1.post_NSA#1.policy_change_state#3.factor_employment
+
 scalar coef = r(estimate)
 scalar lb   = r(lb)
 scalar ub   = r(ub)
@@ -305,11 +379,13 @@ scalar pct_change_ub  = (exp(ub) - 1) * 100
 
 di as result round(pct_change, 0.1) "%"" (95% CI: " round(pct_change_lb, 0.1) "% to " round(pct_change_ub, 0.1) "%)"
 
-svy, subpop(if factor_education == 1): regress high_medical_spending interaction post_NSA policy_change_state i.year i.statefip i.factor_age i.factor_race i.factor_employment i.sex 
+svy: glm hipval post_NSA##policy_change_state##i.factor_employment i.year i.statefip i.factor_age i.factor_race i.factor_education i.sex i.poverty, family(gamma) link(log)
 
-svy, subpop(if factor_education == 2): glm moop interaction post_NSA policy_change_state i.year i.statefip i.factor_age i.factor_race i.factor_employment i.sex i.poverty, family(gamma) link(log) 
 
-lincom interaction
+* Calculate and display relative percentage change for 3-way interaction term (employed vs not in labor force)
+
+lincom 1.post_NSA#1.policy_change_state#2.factor_employment
+
 scalar coef = r(estimate)
 scalar lb   = r(lb)
 scalar ub   = r(ub)
@@ -319,9 +395,10 @@ scalar pct_change_ub  = (exp(ub) - 1) * 100
 
 di as result round(pct_change, 0.1) "%"" (95% CI: " round(pct_change_lb, 0.1) "% to " round(pct_change_ub, 0.1) "%)"
 
-svy, subpop(if factor_education == 2): glm hipval interaction post_NSA policy_change_state i.year i.statefip i.factor_age i.factor_race i.factor_employment i.sex i.poverty, family(gamma) link(log) 
+* Calculate and display relative percentage change for 3-way interaction term (employed vs unemployed)
 
-lincom interaction
+lincom 1.post_NSA#1.policy_change_state#3.factor_employment
+
 scalar coef = r(estimate)
 scalar lb   = r(lb)
 scalar ub   = r(ub)
@@ -331,13 +408,16 @@ scalar pct_change_ub  = (exp(ub) - 1) * 100
 
 di as result round(pct_change, 0.1) "%"" (95% CI: " round(pct_change_lb, 0.1) "% to " round(pct_change_ub, 0.1) "%)"
 
-svy, subpop(if factor_education == 2): regress high_medical_spending interaction post_NSA policy_change_state i.year i.statefip i.factor_age i.factor_race i.factor_employment i.sex 
+svy: regress high_medical_spending post_NSA##policy_change_state##i.factor_employment i.year i.statefip i.factor_age i.factor_race i.factor_education i.sex 
 
-* By employment status
+* Subgroup: By Poverty Status (repeated from above)
 
-svy, subpop(if factor_employment == 1): glm moop interaction post_NSA policy_change_state i.year i.statefip i.factor_age i.factor_race i.factor_education i.sex i.poverty, family(gamma) link(log) 
+svy: glm moop post_NSA##policy_change_state##i.poverty i.year i.statefip i.factor_age i.factor_race i.factor_education i.sex i.factor_employment, family(gamma) link(log)
 
-lincom interaction
+* Calculate and display relative percentage change for 3-way interaction term
+
+lincom 1.post_NSA#1.policy_change_state#1.poverty
+
 scalar coef = r(estimate)
 scalar lb   = r(lb)
 scalar ub   = r(ub)
@@ -347,9 +427,12 @@ scalar pct_change_ub  = (exp(ub) - 1) * 100
 
 di as result round(pct_change, 0.1) "%"" (95% CI: " round(pct_change_lb, 0.1) "% to " round(pct_change_ub, 0.1) "%)"
 
-svy, subpop(if factor_employment == 1): glm hipval interaction post_NSA policy_change_state i.year i.statefip i.factor_age i.factor_race i.factor_education i.sex i.poverty, family(gamma) link(log) 
+svy: glm hipval post_NSA##policy_change_state##i.poverty i.year i.statefip i.factor_age i.factor_race i.factor_education i.sex i.factor_employment, family(gamma) link(log)
 
-lincom interaction
+* Calculate and display relative percentage change for 3-way interaction term
+
+lincom 1.post_NSA#1.policy_change_state#1.poverty
+
 scalar coef = r(estimate)
 scalar lb   = r(lb)
 scalar ub   = r(ub)
@@ -359,110 +442,4 @@ scalar pct_change_ub  = (exp(ub) - 1) * 100
 
 di as result round(pct_change, 0.1) "%"" (95% CI: " round(pct_change_lb, 0.1) "% to " round(pct_change_ub, 0.1) "%)"
 
-svy, subpop(if factor_employment == 1): regress high_medical_spending interaction post_NSA policy_change_state i.year i.statefip i.factor_age i.factor_race i.factor_education i.sex
-
-svy, subpop(if factor_employment == 2): glm moop interaction post_NSA policy_change_state i.year i.statefip i.factor_age i.factor_race i.factor_education i.sex i.poverty, family(gamma) link(log) 
-
-lincom interaction
-scalar coef = r(estimate)
-scalar lb   = r(lb)
-scalar ub   = r(ub)
-scalar pct_change     = (exp(coef) - 1) * 100
-scalar pct_change_lb  = (exp(lb) - 1) * 100
-scalar pct_change_ub  = (exp(ub) - 1) * 100
-
-di as result round(pct_change, 0.1) "%"" (95% CI: " round(pct_change_lb, 0.1) "% to " round(pct_change_ub, 0.1) "%)"
-
-svy, subpop(if factor_employment == 2): glm hipval interaction post_NSA policy_change_state i.year i.statefip i.factor_age i.factor_race i.factor_education i.sex i.poverty, family(gamma) link(log) 
-
-lincom interaction
-scalar coef = r(estimate)
-scalar lb   = r(lb)
-scalar ub   = r(ub)
-scalar pct_change     = (exp(coef) - 1) * 100
-scalar pct_change_lb  = (exp(lb) - 1) * 100
-scalar pct_change_ub  = (exp(ub) - 1) * 100
-
-di as result round(pct_change, 0.1) "%"" (95% CI: " round(pct_change_lb, 0.1) "% to " round(pct_change_ub, 0.1) "%)"
-
-svy, subpop(if factor_employment == 2): regress high_medical_spending interaction post_NSA policy_change_state i.year i.statefip i.factor_age i.factor_race i.factor_education i.sex 
-
-svy, subpop(if factor_employment == 3): glm moop interaction post_NSA policy_change_state i.year i.statefip i.factor_age i.factor_race i.factor_education i.sex i.poverty, family(gamma) link(log) 
-
-lincom interaction
-scalar coef = r(estimate)
-scalar lb   = r(lb)
-scalar ub   = r(ub)
-scalar pct_change     = (exp(coef) - 1) * 100
-scalar pct_change_lb  = (exp(lb) - 1) * 100
-scalar pct_change_ub  = (exp(ub) - 1) * 100
-
-di as result round(pct_change, 0.1) "%"" (95% CI: " round(pct_change_lb, 0.1) "% to " round(pct_change_ub, 0.1) "%)"
-
-svy, subpop(if factor_employment == 3): glm hipval interaction post_NSA policy_change_state i.year i.statefip i.factor_age i.factor_race i.factor_education i.sex i.poverty, family(gamma) link(log) 
-
-lincom interaction
-scalar coef = r(estimate)
-scalar lb   = r(lb)
-scalar ub   = r(ub)
-scalar pct_change     = (exp(coef) - 1) * 100
-scalar pct_change_lb  = (exp(lb) - 1) * 100
-scalar pct_change_ub  = (exp(ub) - 1) * 100
-
-di as result round(pct_change, 0.1) "%"" (95% CI: " round(pct_change_lb, 0.1) "% to " round(pct_change_ub, 0.1) "%)"
-
-svy, subpop(if factor_employment == 3): regress high_medical_spending interaction post_NSA policy_change_state i.year i.statefip i.factor_age i.factor_race i.factor_education i.sex
-
-* By poverty status
-
-svy, subpop(if poverty == 1): glm moop interaction post_NSA policy_change_state i.year i.statefip i.factor_age i.factor_race i.factor_education i.sex i.factor_employment, family(gamma) link(log) 
-
-lincom interaction
-scalar coef = r(estimate)
-scalar lb   = r(lb)
-scalar ub   = r(ub)
-scalar pct_change     = (exp(coef) - 1) * 100
-scalar pct_change_lb  = (exp(lb) - 1) * 100
-scalar pct_change_ub  = (exp(ub) - 1) * 100
-
-di as result round(pct_change, 0.1) "%"" (95% CI: " round(pct_change_lb, 0.1) "% to " round(pct_change_ub, 0.1) "%)"
-
-svy, subpop(if poverty == 1): glm hipval interaction post_NSA policy_change_state i.year i.statefip i.factor_age i.factor_race i.factor_education i.sex i.factor_employment, family(gamma) link(log) 
-
-lincom interaction
-scalar coef = r(estimate)
-scalar lb   = r(lb)
-scalar ub   = r(ub)
-scalar pct_change     = (exp(coef) - 1) * 100
-scalar pct_change_lb  = (exp(lb) - 1) * 100
-scalar pct_change_ub  = (exp(ub) - 1) * 100
-
-di as result round(pct_change, 0.1) "%"" (95% CI: " round(pct_change_lb, 0.1) "% to " round(pct_change_ub, 0.1) "%)"
-
-svy, subpop(if poverty == 1): regress high_medical_spending interaction post_NSA policy_change_state i.year i.statefip i.factor_age i.factor_race i.factor_education i.sex i.factor_employment
-
-svy, subpop(if poverty == 0): glm moop interaction post_NSA policy_change_state i.year i.statefip i.factor_age i.factor_race i.factor_education i.sex i.factor_employment, family(gamma) link(log) 
-
-lincom interaction
-scalar coef = r(estimate)
-scalar lb   = r(lb)
-scalar ub   = r(ub)
-scalar pct_change     = (exp(coef) - 1) * 100
-scalar pct_change_lb  = (exp(lb) - 1) * 100
-scalar pct_change_ub  = (exp(ub) - 1) * 100
-
-di as result round(pct_change, 0.1) "%"" (95% CI: " round(pct_change_lb, 0.1) "% to " round(pct_change_ub, 0.1) "%)"
-
-svy, subpop(if poverty == 0): glm hipval interaction post_NSA policy_change_state i.year i.statefip i.factor_age i.factor_race i.factor_education i.sex i.factor_employment, family(gamma) link(log) 
-
-lincom interaction
-scalar coef = r(estimate)
-scalar lb   = r(lb)
-scalar ub   = r(ub)
-scalar pct_change     = (exp(coef) - 1) * 100
-scalar pct_change_lb  = (exp(lb) - 1) * 100
-scalar pct_change_ub  = (exp(ub) - 1) * 100
-
-di as result round(pct_change, 0.1) "%"" (95% CI: " round(pct_change_lb, 0.1) "% to " round(pct_change_ub, 0.1) "%)"
-
-svy, subpop(if poverty == 0): regress high_medical_spending interaction post_NSA policy_change_state i.year i.statefip i.factor_age i.factor_race i.factor_education i.sex i.factor_employment
+svy: regress high_medical_spending post_NSA##policy_change_state##i.poverty i.year i.statefip i.factor_age i.factor_race i.factor_education i.sex 
